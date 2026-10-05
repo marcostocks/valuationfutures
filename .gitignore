@@ -1,0 +1,16 @@
+# Anchor / Rust build artifacts
+target/
+/program/target/
+
+# Node dependencies
+node_modules/
+
+# Anchor local validator state (contains keypairs — never commit)
+.anchor/
+
+# Solana keypairs / wallets — never commit
+*keypair*.json
+id.json
+
+# macOS
+.DS_Store

@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marco Valuation Futures · How It Works</title>
+<!--
+  Marco · Valuation Futures — technical / due-diligence overview.
+  A standalone companion to the demo (valuationfutures/index.html). Explains the
+  architecture, the mark-price engine, the risk & solvency model, settlement, and
+  the on-chain marco-futures Anchor program — with a code map so a technical reviewer
+  can verify every claim against the repository. Design tokens copied from the demo.
+-->
+<style>
+:root{
+  --bg:#000000; --bg-2:#121212; --bg-3:#1C1C1E;
+  --surface:rgba(255,255,255,.05); --surface-2:rgba(255,255,255,.09);
+  --line:rgba(255,255,255,.10); --line-2:rgba(255,255,255,.18);
+  --ink:#F5F5F7; --ink-2:#A1A1A6; --mute:#86868B;
+  --acc:#DEE0E7; --acc-dim:rgba(222,224,231,.13); --acc-ink:#08080A;
+  --up:#30D158; --down:#FF453A; --brand:#4D9BF0;
+  --card:rgba(255,255,255,.04);
+  --r:14px; --r-sm:10px; --t-fast:120ms;
+  --sans:'Open Sauce Sans',-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#FFFFFF; --bg-2:#F5F5F7; --bg-3:#EBEBED;
+    --surface:rgba(0,0,0,.035); --surface-2:rgba(0,0,0,.07);
+    --line:rgba(0,0,0,.11); --line-2:rgba(0,0,0,.20);
+    --ink:#1D1D1F; --ink-2:#515154; --mute:#6E6E73;
+    --acc:#1D1D1F; --acc-dim:rgba(29,29,31,.10); --acc-ink:#FFFFFF;
+    --up:#248A3D; --down:#D70015; --brand:#2A72C8;
+    --card:rgba(0,0,0,.025);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#FFFFFF; --bg-2:#F5F5F7; --bg-3:#EBEBED;
+  --surface:rgba(0,0,0,.035); --surface-2:rgba(0,0,0,.07);
+  --line:rgba(0,0,0,.11); --line-2:rgba(0,0,0,.20);
+  --ink:#1D1D1F; --ink-2:#515154; --mute:#6E6E73;
+  --acc:#1D1D1F; --acc-dim:rgba(29,29,31,.10); --acc-ink:#FFFFFF;
+  --up:#248A3D; --down:#D70015; --brand:#2A72C8;
+  --card:rgba(0,0,0,.025);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-weight:400;
+  line-height:1.6;-webkit-font-smoothing:antialiased;font-size:15px}
+a{color:var(--brand);text-decoration:none}
+a:hover{text-decoration:underline}
+code,.mono{font-family:var(--mono)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ── top bar ── */
+.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
+  padding:12px clamp(16px,4vw,40px);background:color-mix(in srgb,var(--bg) 82%,transparent);
+  backdrop-filter:saturate(180%) blur(16px);border-bottom:1px solid var(--line)}
+.logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
+  background:var(--acc);color:var(--acc-ink);font-weight:700;font-size:15px;flex:none}
+.brand{font-weight:600;font-size:14px}
+.brand span{color:var(--mute);font-weight:400}
+.top .sp{flex:1}
+.tbtn{font-size:12.5px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);
+  border-radius:8px;padding:7px 12px;cursor:pointer;transition:border-color var(--t-fast),color var(--t-fast)}
+.tbtn:hover{border-color:var(--line-2);color:var(--ink)}
+
+/* ── layout ── */
+.wrap{max-width:900px;margin:0 auto;padding:0 clamp(16px,4vw,40px)}
+.hero{padding:54px 0 26px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--brand);font-weight:600}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.12;letter-spacing:-.02em;font-weight:600;margin:12px 0}
+.lead{font-size:17px;color:var(--ink-2);max-width:70ch}
+.lead b{color:var(--ink);font-weight:600}
+
+/* status strip */
+.status{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:26px}
+.st{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 13px;background:var(--card)}
+.st .k{display:flex;align-items:center;gap:7px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--mute)}
+.st .k::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--up);flex:none}
+.st.roadmap .k::before{background:var(--mute)}
+.st .v{font-size:14px;font-weight:600;margin-top:5px}
+.st .d{font-size:12px;color:var(--mute);margin-top:2px}
+
+/* contents */
+.toc{display:flex;flex-wrap:wrap;gap:8px 18px;padding:18px 0 4px;font-size:13.5px}
+.toc a{color:var(--ink-2)}
+.toc a:hover{color:var(--ink);text-decoration:none}
+.toc .n{color:var(--mute);font-variant-numeric:tabular-nums;margin-right:6px}
+
+/* sections */
+section{padding:38px 0;border-top:1px solid var(--line)}
+section:first-of-type{border-top:0}
+h2{font-size:23px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px;scroll-margin-top:70px}
+.sub{color:var(--mute);font-size:13px;margin-bottom:18px}
+h3{font-size:15px;font-weight:600;margin:22px 0 8px}
+p{margin-bottom:13px;color:var(--ink-2)}
+p b,li b{color:var(--ink);font-weight:600}
+.wrap p:last-child{margin-bottom:0}
+
+/* cards & callouts */
+.card{border:1px solid var(--line);border-radius:var(--r);padding:20px 22px;background:var(--card);margin:16px 0}
+.note{border:1px solid var(--line);border-left:3px solid var(--brand);border-radius:var(--r-sm);
+  padding:14px 16px;background:var(--card);margin:16px 0;font-size:14px;color:var(--ink-2)}
+.note.warn{border-left-color:var(--down)}
+.note b{color:var(--ink)}
+
+/* architecture diagram */
+.arch{display:flex;flex-direction:column;gap:0;margin:18px 0}
+.layer{border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;background:var(--card);position:relative}
+.layer + .layer{margin-top:26px}
+.layer + .layer::before{content:"";position:absolute;top:-20px;left:50%;width:1px;height:14px;background:var(--line-2)}
+.layer + .layer::after{content:"▼";position:absolute;top:-14px;left:50%;transform:translateX(-50%);
+  font-size:9px;color:var(--mute)}
+.layer .lh{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.layer .lt{font-weight:600;font-size:15px}
+.layer .tag{font-size:11px;color:var(--mute);font-family:var(--mono);border:1px solid var(--line);
+  padding:2px 8px;border-radius:20px}
+.layer .ld{font-size:13px;color:var(--mute);margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.chip{font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);
+  border-radius:7px;padding:4px 9px}
+.chip.b{border-color:color-mix(in srgb,var(--brand) 40%,transparent);color:var(--brand)}
+
+/* numbered steps */
+.steps{counter-reset:s;margin:16px 0;padding:0;list-style:none}
+.steps li{position:relative;padding:0 0 16px 44px;margin:0}
+.steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:0;
+  width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:13px;font-weight:600;
+  background:var(--acc);color:var(--acc-ink);font-variant-numeric:tabular-nums}
+.steps li:not(:last-child)::after{content:"";position:absolute;left:13.5px;top:30px;bottom:2px;width:1px;background:var(--line)}
+.steps .lt{font-weight:600;color:var(--ink)}
+.steps .ld{font-size:14px;color:var(--ink-2)}
+.steps code{font-size:12.5px}
+
+/* tables */
+.tbl{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:16px 0}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:520px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--mute);font-weight:600;background:var(--surface)}
+tr:last-child td{border-bottom:0}
+td.mono,td .mono{font-size:12.5px;color:var(--ink-2)}
+td b{color:var(--ink)}
+
+/* key-value grid */
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:16px 0}
+.kv > div{background:var(--bg);padding:13px 15px}
+.kv .k{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--mute)}
+.kv .v{font-size:14px;font-weight:600;margin-top:4px}
+.kv .v.mono{font-size:12px;font-weight:400;word-break:break-all}
+
+ul.plain{list-style:none;padding:0;margin:14px 0}
+ul.plain li{position:relative;padding:5px 0 5px 20px;font-size:14px;color:var(--ink-2)}
+ul.plain li::before{content:"";position:absolute;left:3px;top:12px;width:5px;height:5px;border-radius:50%;background:var(--mute)}
+
+.pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;vertical-align:middle}
+.pill.ok{background:color-mix(in srgb,var(--up) 16%,transparent);color:var(--up)}
+.pill.dev{background:color-mix(in srgb,var(--brand) 16%,transparent);color:var(--brand)}
+.pill.soon{background:var(--surface-2);color:var(--mute)}
+
+footer{border-top:1px solid var(--line);padding:26px 0 60px;color:var(--mute);font-size:12.5px}
+footer p{color:var(--mute);font-size:12.5px}
+
+@media (max-width:640px){
+  .status{grid-template-columns:1fr 1fr}
+  h1{font-size:30px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo">M</div>
+  <div class="brand">Marco <span>· Valuation Futures</span></div>
+  <div class="sp"></div>
+  <button class="tbtn" id="themeBtn">Theme</button>
+</div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="eyebrow">Technical &amp; Due-Diligence Overview</div>
+    <h1>How Marco Valuation Futures works</h1>
+    <p class="lead">Marco is a <b>dated futures venue on private, pre-IPO valuations</b>. Traders take
+      leveraged long/short exposure on a company's total enterprise valuation; at the real listing or
+      acquisition, every position cash-settles against a verifiable outcome. This page explains the
+      architecture, the pricing and risk engine, and the on-chain program — and maps each claim to the
+      exact place in the source so it can be independently verified.</p>
+
+    <div class="status">
+      <div class="st"><div class="k">Design</div><div class="v">Complete</div><div class="d">Whitepaper &amp; protocol spec</div></div>
+      <div class="st"><div class="k">Interactive demo</div><div class="v">Live</div><div class="d">Runs off-disk, no wallet</div></div>
+      <div class="st"><div class="k">On-chain program</div><div class="v">Built &amp; tested</div><div class="d">6/6 tests · local validator</div></div>
+      <div class="st roadmap"><div class="k">Devnet → audit → mainnet</div><div class="v">Roadmap</div><div class="d">Not yet deployed</div></div>
+    </div>
+  </div>
+
+  <nav class="toc">
+    <a href="#arch"><span class="n">01</span>Architecture</a>
+    <a href="#trade"><span class="n">02</span>Anatomy of a trade</a>
+    <a href="#mark"><span class="n">03</span>The mark price</a>
+    <a href="#risk"><span class="n">04</span>Risk &amp; solvency</a>
+    <a href="#settle"><span class="n">05</span>Settlement</a>
+    <a href="#program"><span class="n">06</span>The on-chain program</a>
+    <a href="#codemap"><span class="n">07</span>Code map</a>
+    <a href="#status"><span class="n">08</span>Live vs simulated</a>
+  </nav>
+
+  <!-- 01 ARCHITECTURE -->
+  <section id="arch">
+    <h2>01 · Architecture</h2>
+    <div class="sub">Three layers. The program is the counterparty and holds all funds; the engine prices and risk-checks; the terminal is the interface.</div>
+
+    <div class="arch">
+      <div class="layer">
+        <div class="lh"><span class="lt">Trading terminal</span><span class="tag">valuationfutures/index.html</span></div>
+        <div class="ld">A self-contained interface: mark, chart, order ticket (long/short · leverage), live position with PnL and liquidation price, order book, and the settlement countdown. Opens straight off disk as a simulation, or against the live program when a client bundle is present.</div>
+        <div class="chips"><span class="chip">Order ticket</span><span class="chip">Live PnL</span><span class="chip">Mark-source indicator</span><span class="chip">Settlement countdown</span></div>
+      </div>
+
+      <div class="layer">
+        <div class="lh"><span class="lt">Pricing &amp; risk engine</span><span class="tag">mark · margin · liquidation</span></div>
+        <div class="ld">Turns order flow into a mark price, values every open position against it, and enforces leverage, margin and liquidation rules. The mark is <b>internal by default, external by override</b> (see §3).</div>
+        <div class="chips"><span class="chip b">Internal 8h EMA</span><span class="chip b">External anchor override</span><span class="chip">Isolated margin</span><span class="chip">Maintenance-margin liquidation</span></div>
+      </div>
+
+      <div class="layer">
+        <div class="lh"><span class="lt">On-chain program — <code>marco-futures</code></span><span class="tag">Solana · Anchor · Rust</span></div>
+        <div class="ld">The settlement layer and the counterparty. Holds trader margin in a program-owned USDC vault, runs the vAMM, enforces the risk rules, pays out profits, and posts the final settlement price. A per-market insurance fund backstops residual skew.</div>
+        <div class="chips"><span class="chip">Collateral vault</span><span class="chip">Insurance vault</span><span class="chip">13 instructions</span><span class="chip">Solvency by construction</span></div>
+      </div>
+    </div>
+
+    <div class="note"><b>Custody model.</b> Unlike Marco's vault products — where the operator can never move a holder's money — a derivatives venue must be the counterparty. Trader USDC lives in a <b>program-owned</b> collateral vault that only the program can move, governed by two hard invariants: <b>solvency by construction</b> (no instruction ever pays out more than a vault holds) and <b>per-market isolation</b> (one market can never drain another). Both are covered in §4.</div>
+  </section>
+
+  <!-- 02 TRADE -->
+  <section id="trade">
+    <h2>02 · Anatomy of a trade</h2>
+    <div class="sub">From deposit to settlement, and every risk check in between.</div>
+
+    <ol class="steps">
+      <li><div class="lt">Deposit margin</div><div class="ld">The trader deposits USDC into a position account (created on first deposit). Margin is <b>isolated</b> — it backs only this position. <code>deposit_collateral</code></div></li>
+      <li><div class="lt">Open a position</div><div class="ld">The trader picks a side and leverage. The notional is swapped against the vAMM (constant-product), which sets the average fill price and moves the mark. A taker fee is charged and routed to the insurance fund; the open is rejected if it exceeds the leverage cap or the per-side open-interest cap. <code>open_position</code></div></li>
+      <li><div class="lt">Marked continuously</div><div class="ld">The position is valued against the mark price every tick. Unrealized PnL = current notional − cost basis (long) or the inverse (short). This drives the on-screen PnL and the liquidation check.</div></li>
+      <li><div class="lt">Liquidation (if it goes wrong)</div><div class="ld">If account equity (margin + unrealized PnL) falls below the <b>maintenance margin</b>, anyone may liquidate the position permissionlessly. The liquidator earns a reward; residual equity returns to the owner; the insurance fund covers any deficit. <code>liquidate_position</code></div></li>
+      <li><div class="lt">Close, or settle at the event</div><div class="ld">The trader may close any time (realizing PnL against the vAMM). Otherwise, at the real IPO/acquisition the market is settled at a posted price and every position pays out at that fixed number. <code>close_position</code> · <code>settle_market</code> · <code>settle_position</code></div></li>
+    </ol>
+  </section>
+
+  <!-- 03 MARK -->
+  <section id="mark">
+    <h2>03 · The mark price</h2>
+    <div class="sub">The reference used for PnL, margin and liquidation. Private equity has no live spot feed, so the mark is built from two sources.</div>
+
+    <p>The mark is <b>internal by default, external by override</b>:</p>
+    <ul class="plain">
+      <li><b>Internal</b> — an <b>8-hour EMA of the order book</b> (a volume-weighted median of executed trades, smoothed). It is the market's own, permissionless, real-time estimate of the valuation. Anti-manipulation filters (unique-trader ratio, minimum order size, outlier rejection) and a thin-book freeze keep a spike or a hollow book from moving it.</li>
+      <li><b>External</b> — the last <b>verified</b> hard transaction: a priced funding round, a qualifying secondary block, or a corporate action. It moves only on a confirmed event, and when it does the mark <b>converges to the new anchor over a window</b> (not a jump) to avoid liquidation cascades.</li>
+    </ul>
+
+    <div class="card">
+      <h3 style="margin-top:0">Why it fits a dated future</h3>
+      <p style="margin-bottom:0">A perpetual has no expiry, so it needs a funding rate and a continuous external blend to stay tethered to reality. A dated future is tethered by <b>convergence at settlement</b> — the payoff is fixed to a verifiable value at expiry, so price must converge there regardless of interim book noise. That lets the mark stay a fast internal signal between events, with the external anchor reserved for genuine repricings and for settlement itself.</p>
+    </div>
+
+    <div class="note"><b>Implementation.</b> The demo implements this end-to-end — a live indicator under the price shows which source is driving the mark (Internal · External override · Frozen · Settled), and event buttons let a reviewer trigger a funding round or a thin book. Demo timescales are compressed (seconds, not hours) so the behavior is visible in a sitting. Execution still fills against the vAMM (takers pay price impact), while the <em>mark</em> is the EMA — which is why a large order no longer skews the displayed valuation. The full spec is in the demo's <b>Docs</b> tab.</div>
+  </section>
+
+  <!-- 04 RISK -->
+  <section id="risk">
+    <h2>04 · Risk, margin &amp; solvency</h2>
+    <div class="sub">How the venue stays solvent when it is the counterparty to every trade.</div>
+
+    <h3>Margin &amp; liquidation</h3>
+    <ul class="plain">
+      <li><b>Isolated margin.</b> Each position has its own collateral; a loss on one can never propagate to another. A trader holds at most one position per market — increasing adds to it, and flipping sides requires a full close first.</li>
+      <li><b>Initial margin = 1 / max leverage.</b> Up to 10× (≥10% margin), fixed per market at creation.</li>
+      <li><b>Maintenance margin</b> is set in basis points of notional. When equity falls below it, the position is liquidatable.</li>
+      <li><b>Permissionless liquidation.</b> Any keeper can close an underwater position and earn a reward — no privileged actor required.</li>
+    </ul>
+
+    <h3>The two invariants</h3>
+    <div class="card">
+      <p><b>1 · Solvency by construction.</b> No instruction ever transfers more USDC out of a vault than it holds. Payouts are clamped to the available balance and any gap is an explicit, emitted shortfall — never an overdraft. This is enforced directly in the code, e.g. in liquidation:</p>
+      <div class="scroll"><pre style="margin:6px 0 0;font-family:var(--mono);font-size:12.5px;color:var(--ink-2);line-height:1.7"><code>let insurance_cover = bad_debt.min(insurance_bal);
+let mut available   = vault_bal.saturating_add(insurance_cover);
+let reward_paid     = reward.min(available);
+let trader_refund   = trader_refund_owed.min(available);</code></pre></div>
+      <p style="margin-top:12px;margin-bottom:0">Every payout is a <code>.min(balance)</code> — the program cannot be made to pay out money it does not have.</p>
+    </div>
+    <div class="card">
+      <p style="margin-bottom:0"><b>2 · Per-market isolation.</b> Margin, open interest, vAMM reserves and the insurance fund are all per-market and held in separate program-owned vaults. A blow-up in one market is ring-fenced and cannot touch another.</p>
+    </div>
+
+    <h3>Backstops</h3>
+    <ul class="plain">
+      <li><b>Insurance fund</b> — a per-market USDC vault, seeded permissionlessly and fed by all trading fees, that absorbs the residual skew the vAMM leaves open.</li>
+      <li><b>Governance</b> — the admin authority is expected to be a <b>Squads multisig</b>. It can create markets, halt trading, settle, and rotate the keeper; it cannot pay funds to itself. The keeper (operator) can settle and liquidate but likewise cannot move funds to itself.</li>
+      <li><b>Kill-switches</b> — a protocol-wide pause and a per-market halt block new exposure while still allowing closes, liquidations and settlement.</li>
+    </ul>
+  </section>
+
+  <!-- 05 SETTLEMENT -->
+  <section id="settle">
+    <h2>05 · Settlement &amp; fallback logic</h2>
+    <div class="sub">A dated future: it resolves to a single verifiable outcome, with explicit rules for the non-standard ones.</div>
+
+    <p>At the real event, the admin/operator posts the final valuation and the market moves to <b>Settled</b>; each position then settles at that fixed price — longs profit above their entry, shorts below. The displayed countdown is the <em>expected</em> listing date and is indicative only; settlement is contingent on the realised event.</p>
+
+    <div class="tbl scroll">
+      <table>
+        <thead><tr><th>Outcome</th><th>Settlement basis</th></tr></thead>
+        <tbody>
+          <tr><td><b>IPO — standard</b></td><td>Rebase to per-share at the prospectus; settle against the first-day public close.</td></tr>
+          <tr><td><b>IPO delayed &gt; 24 months</b></td><td>Convert to NAV settlement via three independent valuation firms.</td></tr>
+          <tr><td><b>M&amp;A / acquisition</b></td><td>Settle at the acquisition enterprise value (publicly disclosed).</td></tr>
+          <tr><td><b>Direct listing</b></td><td>Use the reference price (not the opening trade).</td></tr>
+          <tr><td><b>IPO withdrawn</b></td><td>Contract voided; initial margin returned with no PnL.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 06 PROGRAM -->
+  <section id="program">
+    <h2>06 · The on-chain program</h2>
+    <div class="sub"><code>marco-futures</code> — a purpose-built Anchor program in the house style, not a fork.</div>
+
+    <div class="kv">
+      <div><div class="k">Program ID</div><div class="v mono">GCW6Gt86tSVMqEwz6GkVNDWuzivDXCG2bzjp4AS3ztkW</div></div>
+      <div><div class="k">Framework</div><div class="v">Anchor 0.31.1 · Rust 2021</div></div>
+      <div><div class="k">Surface</div><div class="v">13 instructions · 3 accounts · 7 events</div></div>
+      <div><div class="k">Typed errors</div><div class="v">25</div></div>
+      <div><div class="k">Build</div><div class="v">BPF binary + IDL <span class="pill ok">green</span></div></div>
+      <div><div class="k">Tests</div><div class="v">6 / 6 integration <span class="pill ok">pass</span></div></div>
+    </div>
+
+    <h3>Accounts (state)</h3>
+    <div class="tbl scroll">
+      <table>
+        <thead><tr><th>Account</th><th>One per</th><th>Holds</th></tr></thead>
+        <tbody>
+          <tr><td><b>FuturesConfig</b></td><td>Deployment</td><td>Admin &amp; operator authorities, USDC mint, global pause.</td></tr>
+          <tr><td><b>Market</b></td><td>Company</td><td>vAMM reserves &amp; anchor, risk parameters, open-interest totals, the two vault addresses, status &amp; settlement price.</td></tr>
+          <tr><td><b>Position</b></td><td>Trader × market</td><td>Isolated margin, signed base size (+long/−short), cost basis, realized PnL.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Instruction set</h3>
+    <div class="tbl scroll">
+      <table>
+        <thead><tr><th>Group</th><th>Instructions</th><th>Who</th></tr></thead>
+        <tbody>
+          <tr><td><b>Governance</b></td><td class="mono">initialize · create_market · settle_market · pause · set_operator · halt_market</td><td>Admin / operator (multisig)</td></tr>
+          <tr><td><b>Trader</b></td><td class="mono">deposit_collateral · withdraw_collateral · open_position · close_position</td><td>Position owner (signed)</td></tr>
+          <tr><td><b>Permissionless</b></td><td class="mono">seed_insurance · liquidate_position · settle_position</td><td>Anyone / keeper</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Security posture</h3>
+    <ul class="plain">
+      <li><b>Checked arithmetic throughout.</b> All ratio and PnL math runs in <code>u128</code>/<code>i128</code> with <code>checked_*</code> / <code>saturating_*</code> operations, narrowing to <code>u64</code> only at the edges with bounds checks. <code>overflow-checks = true</code> in the release profile.</li>
+      <li><b>Payouts clamped to balance</b> — the solvency invariant from §4, enforced at every fund-moving instruction.</li>
+      <li><b>Authority separation</b> — admin (multisig) governs; the keeper can liquidate/settle; neither can pay funds to itself.</li>
+      <li><b>Forward-compatible layout</b> — every account carries explicit byte-size math and reserved padding for upgrades.</li>
+      <li><b>Auditable events</b> — holder-initiated actions emit events (deposits, opens, closes, liquidations, settlements) for off-chain indexing.</li>
+      <li><b>Static analysis</b> — fund-moving instructions were run through Solana program static analysis during development.</li>
+    </ul>
+
+    <h3>What the tests cover</h3>
+    <ul class="plain">
+      <li>Protocol config initializes; a market is created with mark == anchor valuation.</li>
+      <li>A long opens, counter-flow lifts the mark, and the long closes in profit.</li>
+      <li>A position above the leverage cap is rejected.</li>
+      <li>An underwater long is liquidated when the mark crashes.</li>
+      <li>A market settles — long wins, short loses, and the pool stays solvent.</li>
+    </ul>
+  </section>
+
+  <!-- 07 CODE MAP -->
+  <section id="codemap">
+    <h2>07 · Code map</h2>
+    <div class="sub">Every claim on this page maps to a specific place in the repository. For a technical reviewer with the source.</div>
+
+    <div class="tbl scroll">
+      <table>
+        <thead><tr><th>Mechanism</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr><td>Mark price (vAMM ratio)</td><td class="mono">state.rs · Market::mark_price()</td></tr>
+          <tr><td>Constant-product fills &amp; price impact</td><td class="mono">state.rs · quote_open() / quote_close()</td></tr>
+          <tr><td>Unrealized PnL &amp; account equity</td><td class="mono">state.rs · Position::unrealized_pnl() / equity()</td></tr>
+          <tr><td>Liquidation trigger (equity &lt; maintenance)</td><td class="mono">state.rs · Position::is_liquidatable()</td></tr>
+          <tr><td>Fee → insurance routing</td><td class="mono">instructions/open_position.rs · close_position.rs</td></tr>
+          <tr><td>Solvency clamp (payout ≤ balance)</td><td class="mono">instructions/liquidate_position.rs · settle_position.rs</td></tr>
+          <tr><td>Posted-price settlement</td><td class="mono">instructions/settle_market.rs · settle_position.rs</td></tr>
+          <tr><td>Instruction surface (13)</td><td class="mono">lib.rs</td></tr>
+          <tr><td>Integration tests (6)</td><td class="mono">tests/marco-futures.ts</td></tr>
+          <tr><td>Internal / external mark model (demo)</td><td class="mono">valuationfutures/index.html · mark() / tickEMA() / overrideMark()</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mono" style="font-size:12px;color:var(--mute)">Program paths are relative to <code>futures/programs/marco-futures/src/</code>.</p>
+  </section>
+
+  <!-- 08 STATUS -->
+  <section id="status">
+    <h2>08 · Live vs simulated</h2>
+    <div class="sub">Stated plainly, so there is no ambiguity during diligence.</div>
+
+    <div class="tbl scroll">
+      <table>
+        <thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td><b>Interactive demo</b></td><td><span class="pill ok">Live</span></td><td>Simulates the full design locally — mark model, order ticket, PnL, liquidation, settlement. No wallet or chain needed.</td></tr>
+          <tr><td><b>On-chain program</b></td><td><span class="pill ok">Built &amp; tested</span></td><td>Custody, isolated margin, leverage caps, permissionless liquidation, insurance fund and posted-price settlement. Compiles, BPF-builds, and passes 6/6 tests on a local validator.</td></tr>
+          <tr><td><b>Live chain wiring</b></td><td><span class="pill dev">In progress</span></td><td>The demo goes live against the program when a client bundle is published beside it. Not yet built.</td></tr>
+          <tr><td><b>Devnet → audit → mainnet</b></td><td><span class="pill soon">Roadmap</span></td><td>Devnet address reserved; not yet deployed. Third-party audit precedes any mainnet launch.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warn"><b>One honest delta.</b> The internal/external EMA marking described in §3 is implemented in the <b>demo and the design</b>; the on-chain program currently marks positions off the <b>vAMM</b>. Bringing the EMA + external-override marking on-chain (via order-book aggregation or a signed anchor) is the next protocol milestone. The margin, liquidation, custody, insurance and settlement machinery is identical either way.</div>
+
+    <p>Net: the economic core is real, tested, and legible; the pricing engine is fully specified and demonstrable; and the remaining work — chain wiring, on-chain marking, audit, deployment — is scoped and sequenced.</p>
+  </section>
+
+  <footer>
+    <p><b>Marco · Valuation Futures.</b> Technical overview for due diligence — companion to the interactive demo.</p>
+    <p style="margin-top:8px">This material is provided for informational purposes only and does not constitute an offer or solicitation to purchase any security. Figures in the demo are simulated. Roadmap items are forward-looking and subject to change.</p>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var b=document.getElementById('themeBtn');
+  b.onclick=function(){
+    var r=document.documentElement;
+    var cur=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+    r.setAttribute('data-theme',cur==='dark'?'light':'dark');
+  };
+})();
+</script>
+</body>
+</html>
